@@ -10,6 +10,12 @@ The `json` stage is a parsing stage that reads the log line as JSON and accepts
 
 ```yaml
 json:
+  # Fields to be dropped before processing expressions and sources.
+  # These fields must not be defined as an expression or as the source
+  # of this stage.
+  [drop_fields:]
+    [- <string>]
+
   # Set of key/value pairs of JMESPath expressions. The key will be
   # the key in the extracted data while the expression will the value,
   # evaluated as a JMESPath from the source data.
@@ -126,3 +132,7 @@ The following key-value pairs would be created in the set of extracted data:
 
 Note that referring to `grpc.stream` without the combination of double quotes
 wrapped in single quotes will not work properly.
+
+### Dropping JSON Fields
+
+< PLACEHOLDER >

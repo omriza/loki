@@ -98,6 +98,9 @@ func TestPipeline_JSON(t *testing.T) {
 }
 
 var cfg = `json:
+  drop_fields:
+    - drop1
+    - drop2
   expressions:
     key1: expression1
     key2: expression2.expression2`
@@ -120,6 +123,7 @@ func TestYamlMapStructure(t *testing.T) {
 		t.Fatalf("could not create parser from yaml: %s", err)
 	}
 	want := &JSONConfig{
+		DropFields: []string{"drop1", "drop2"},
 		Expressions: map[string]string{
 			"key1": "expression1",
 			"key2": "expression2.expression2",
@@ -167,6 +171,37 @@ func TestJSONConfig_validate(t *testing.T) {
 			0,
 			errors.New(ErrEmptyJSONStageSource),
 		},
+		"drop_field defined as source": {
+			map[string]interface{}{
+				"drop_fields": []string{"msg"},
+				"expressions": map[string]string{
+					"expr1": "expr",
+				},
+				"source": "msg",
+			},
+			0,
+			errors.New(ErrInvalidDropField),
+		},
+		"drop_field defined as an expression value": {
+			map[string]interface{}{
+				"drop_fields": []string{"msg"},
+				"expressions": map[string]string{
+					"expr1": "msg",
+				},
+			},
+			0,
+			errors.New(ErrInvalidDropField),
+		},
+		"drop_field defined as an expression name without a value": {
+			map[string]interface{}{
+				"drop_fields": []string{"msg"},
+				"expressions": map[string]string{
+					"msg": "",
+				},
+			},
+			0,
+			errors.New(ErrInvalidDropField),
+		},
 		"valid without source": {
 			map[string]interface{}{
 				"expressions": map[string]string{
@@ -180,6 +215,20 @@ func TestJSONConfig_validate(t *testing.T) {
 		},
 		"valid with source": {
 			map[string]interface{}{
+				"expressions": map[string]string{
+					"expr1": "expr",
+					"expr2": "",
+					"expr3": "expr1.expr2",
+				},
+				"source": "log",
+			},
+			3,
+			nil,
+		},
+		"valid with drop_fields": {
+			// TODO[discuss w/maintainers] this is a good example of how naive the validation is without using jmes
+			map[string]interface{}{
+				"drop_fields": []string{"expr1"},
 				"expressions": map[string]string{
 					"expr1": "expr",
 					"expr2": "",
@@ -268,6 +317,20 @@ func TestJSONParser_Parse(t *testing.T) {
 				"nested":    "{\"child\":\"value\"}",
 				"message":   "this is a log line",
 				"complex":   "test4",
+			},
+		},
+		"successfully decode json on entry with drop_fields": {
+			map[string]interface{}{
+				"drop_fields": []string{"time", "app", "component", "level", "numeric", "nested", "complex"},
+				"expressions": map[string]string{
+					"output": "@",
+				},
+			},
+			map[string]interface{}{},
+			logFixture,
+			map[string]interface{}{
+				// TODO[discuss w/maintainers] this case will is brittle as json-iterator's output isn't sorted like std json
+				"output": "{\"message\":\"this is a log line\"}",
 			},
 		},
 		"successfully decode json on extracted[source]": {

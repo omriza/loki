@@ -19,10 +19,13 @@ const (
 	ErrCouldNotCompileJMES  = "could not compile JMES expression"
 	ErrEmptyJSONStageConfig = "empty json stage configuration"
 	ErrEmptyJSONStageSource = "empty source"
+	ErrInvalidDropField     = "dropping source or expression fields is invalid"
+	// TODO[discuss w/maintainers] should we have two distinct errors for each case? what's the expected verbosity?
 )
 
 // JSONConfig represents a JSON Stage configuration
 type JSONConfig struct {
+	DropFields  []string          `mapstructure:"drop_fields"`
 	Expressions map[string]string `mapstructure:"expressions"`
 	Source      *string           `mapstructure:"source"`
 }
@@ -41,6 +44,15 @@ func validateJSONConfig(c *JSONConfig) (map[string]*jmespath.JMESPath, error) {
 		return nil, errors.New(ErrEmptyJSONStageSource)
 	}
 
+	dropFieldSet := make(map[string]struct{}, len(c.DropFields))
+	for _, df := range c.DropFields {
+		// It is invalid to drop a field that is defined as a source.
+		if c.Source != nil && *c.Source == df {
+			return nil, errors.New(ErrInvalidDropField)
+		}
+		dropFieldSet[df] = struct{}{}
+	}
+
 	expressions := map[string]*jmespath.JMESPath{}
 
 	for n, e := range c.Expressions {
@@ -49,6 +61,11 @@ func validateJSONConfig(c *JSONConfig) (map[string]*jmespath.JMESPath, error) {
 		// If there is no expression, use the name as the expression.
 		if e == "" {
 			jmes = n
+		}
+		// It is invalid to drop a field that is defined as an expression.
+		// TODO[discuss w/maintainers] this is a naive implementation that doesn't take into account jmes matching other than plain field name
+		if _, ok := dropFieldSet[jmes]; ok {
+			return nil, errors.New(ErrInvalidDropField)
 		}
 		expressions[n], err = jmespath.Compile(jmes)
 		if err != nil {
@@ -130,6 +147,10 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 			level.Debug(j.logger).Log("msg", "failed to unmarshal log line", "err", err)
 		}
 		return
+	}
+
+	for _, df := range j.cfg.DropFields {
+		delete(data, df)
 	}
 
 	for n, e := range j.expressions {
